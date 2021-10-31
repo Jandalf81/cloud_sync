@@ -3,12 +3,18 @@ import getopt
 import configparser
 import os
 import glob
+import subprocess
+import time
 
 
 def __main__(argv):
     __init__()
 
     getParameters(argv)
+
+    readSettings()
+
+    readTheme(settings.get('settings', 'theme'))
     
     if rom == '':
         fillParametersForDebug()
@@ -18,6 +24,12 @@ def __main__(argv):
     getSaveFiles(system, savefile_directory, rom)
 
     printDebug()
+
+    createNotification('up', 'GoogleDrive', 'sync')
+
+    showNotification('/home/pi/RetroPie/scripts/cloud-sync/test.png', '10000')
+    # time.sleep(3)
+    # showNotification('/home/pi/RetroPie/scripts/cloud-sync/Notification_2.png', '10000')
 
 
 def __init__():
@@ -69,6 +81,13 @@ def fillParametersForDebug():
     emulator = 'lr-gambatte'
     rom = '/home/pi/RetroPie/roms/gb/Mystic Quest (Germany).zip'
     command = '/opt/retropie/emulators/retroarch/bin/retroarch -L /opt/retropie/libretrocores/lr-gambatte/gambatte_libretro.so --config /opt/retropie/configs/gb/retroarch.cfg "/home/pi/RetroPie/roms/gb/Mystic Quest (Germany).zip'
+
+
+def readSettings():
+    global settings
+
+    settings = configparser.ConfigParser()
+    settings.read('/home/pi/RetroPie/scripts/cloud-sync/settings.ini')
 
 
 def getParameterFromConfig(system, parameter):
@@ -142,6 +161,61 @@ def getSaveFiles(system, directory, rom):
     savestates_images = set(glob.glob(romWithoutExt + '.' + savestate_extensions + '.png'))
 
     savestates = set(savestates) - set(savestates_images)
+
+
+def readTheme(name):
+    global theme
+
+    theme = configparser.ConfigParser()
+    theme.read('/home/pi/RetroPie/scripts/cloud-sync/themes/' + name + '/theme.ini')
+
+
+def createNotification(direction, provider, status):
+    global theme
+
+    game = os.path.basename(rom)
+    game = game.rsplit('.', 1)[0]
+
+    command = ['convert']
+    # settings
+    command.append('-gravity NorthWest')
+    # size
+    command.append('-size ' + theme.get('notification', 'size'))
+    # background color
+    command.append('canvas:"' + theme.get('notification', 'background') + '"')
+    # Game System and Name
+    command.append('-pointsize ' + theme.get('game', 'fontsize') + ' -font ' + theme.get('game', 'font') + ' -style ' + theme.get('game', 'fontstyle') + ' -fill "' + theme.get('game', 'fontcolor') + '" -draw "text ' + theme.get('game', 'xy') + ' \'[' + system + '] ' + game + '\'"')
+    # Battery Save
+    if len(savefiles) > 0:
+        command.append('-pointsize ' + theme.get('battery', 'fontsize') + ' -font ' + theme.get('battery', 'font') + ' -style ' + theme.get('battery', 'fontstyle') + ' -fill "' + theme.get('battery', 'fontcolor') + '" -draw "text ' + theme.get('battery', 'xy') + ' \'Battery Save found\'"')
+    else:
+        command.append('-pointsize ' + theme.get('battery', 'fontsize') + ' -font ' + theme.get('battery', 'font') + ' -style ' + theme.get('battery', 'fontstyle') + ' -fill "' + theme.get('battery', 'fontcolor') + '" -draw "text ' + theme.get('battery', 'xy') + ' \'No Battery Save found\'"')
+    # Save States
+    command.append('-pointsize ' + theme.get('savestate', 'fontsize') + ' -font ' + theme.get('savestate', 'font') + ' -style ' + theme.get('savestate', 'fontstyle') + ' -fill "' + theme.get('savestate', 'fontcolor') + '" -draw "text ' + theme.get('savestate', 'xy') + ' \'' + str(len(savestates)) + ' Savestate(s) and ' + str(len(savestates_images)) + ' Screenshot(s) found\'"')
+
+    command.append('/home/pi/RetroPie/scripts/cloud-sync/themes/' + settings.get('settings', 'theme') + '/direction_' + direction + '.png -geometry ' + theme.get('direction', 'geometry') + ' -composite')
+    command.append('/home/pi/RetroPie/scripts/cloud-sync/themes/' + settings.get('settings', 'theme') + '/provider_' + provider + '.png -geometry ' + theme.get('provider', 'geometry') + ' -composite')
+    command.append('/home/pi/RetroPie/scripts/cloud-sync/themes/' + settings.get('settings', 'theme') + '/status_' + status + '.png -geometry ' + theme.get('status', 'geometry') + ' -composite')
+
+    # output file
+    command.append('/home/pi/RetroPie/scripts/cloud-sync/test.png')
+
+    print(' '.join(command))
+    os.system(' '.join(command))
+
+
+def showNotification(image, timeout):
+    command = ['nohup',  'pngview', image]
+    command.append('-t ' + timeout)
+    command.append('-b 0')
+    command.append('-l 10000')
+    command.append('-x 16')
+    command.append('-y 16')
+    command.append('&>/dev/null')
+    command.append('&')
+    subprocess.Popen(command)
+
+    #subprocess.Popen(['nohup',  'pngview',  image,  '-t ' + timeout,  '-b 0',  '-l 10000',  '-x 16',  '-y 16', '&>/dev/null',  '&'])
 
 
 def printDebug():
