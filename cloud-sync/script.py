@@ -21,23 +21,29 @@ def __main__(argv):
 
     getSaveDirectories()
 
-    getSaveFiles(system, savefile_directory, rom)
+    getSaveFiles(system, rom)
 
     printDebug()
 
     createNotification('up', 'GoogleDrive', 'sync')
+    showNotification('/dev/shm/cloud-sync.png', '10000')
+    
+    time.sleep(3)
+    
+    createNotification('up', 'GoogleDrive', 'ok')
+    showNotification('/dev/shm/cloud-sync.png', '10000')
 
-    showNotification('/home/pi/RetroPie/scripts/cloud-sync/test.png', '10000')
-    # time.sleep(3)
-    # showNotification('/home/pi/RetroPie/scripts/cloud-sync/Notification_2.png', '10000')
 
-
+# initalize the script
 def __init__():
     global configBasePath
+    global scriptBasePath
 
     configBasePath = '/opt/retropie/configs/'
+    scriptBasePath = '/home/pi/RetroPie/scripts/cloud-sync/'
 
 
+# extract given RetroArch parameters into global variables
 def getParameters(argv):
     global system
     global emulator
@@ -71,6 +77,7 @@ def getParameters(argv):
             command = arg
 
 
+# fill variables if no RetroArch parameters given for DEBUG purposes
 def fillParametersForDebug():
     global system
     global emulator
@@ -83,13 +90,16 @@ def fillParametersForDebug():
     command = '/opt/retropie/emulators/retroarch/bin/retroarch -L /opt/retropie/libretrocores/lr-gambatte/gambatte_libretro.so --config /opt/retropie/configs/gb/retroarch.cfg "/home/pi/RetroPie/roms/gb/Mystic Quest (Germany).zip'
 
 
+# read the settings file
 def readSettings():
     global settings
+    global scriptBasePath
 
     settings = configparser.ConfigParser()
-    settings.read('/home/pi/RetroPie/scripts/cloud-sync/settings.ini')
+    settings.read(scriptBasePath + 'settings.ini')
 
 
+# read RetroArch configuration parameters from several files (first hit counts): Content, System, All
 def getParameterFromConfig(system, parameter):
     config = configparser.ConfigParser()
 
@@ -126,6 +136,7 @@ def getParameterFromConfig(system, parameter):
     return 'n/a'
 
 
+# get the save directories from RetroArch configuration
 def getSaveDirectories():
     global savefile_directory
     global savestate_directory
@@ -139,9 +150,10 @@ def getSaveDirectories():
         savestate_directory = os.path.dirname(rom)
 
 
-def getSaveFiles(system, directory, rom):
+# get a list of battery saves, save states and screenshots
+def getSaveFiles(system, rom):
     config = configparser.ConfigParser()
-    config.read('/home/pi/RetroPie/scripts/cloud-sync/systems.ini')
+    config.read(scriptBasePath + 'systems.ini')
 
     global savefile_extensions
     global savestate_extensions
@@ -149,27 +161,30 @@ def getSaveFiles(system, directory, rom):
     savefile_extensions = config.get(system, 'savefile')
     savestate_extensions = config.get(system, 'savestate')
 
-    romWithoutExt = rom.rsplit('.', 1)[0]
+    game = os.path.basename(rom)
+    game = game.rsplit('.', 1)[0]
     
     global savefiles 
-    savefiles = set(glob.glob(romWithoutExt + '.' + savefile_extensions))
+    savefiles = set(glob.glob(savefile_directory + '/' + game + '.' + savefile_extensions))
 
     global savestates
-    savestates = set(glob.glob(romWithoutExt + '.' + savestate_extensions))
+    savestates = set(glob.glob(savestate_directory + '/' + game + '.' + savestate_extensions))
 
     global savestates_images
-    savestates_images = set(glob.glob(romWithoutExt + '.' + savestate_extensions + '.png'))
+    savestates_images = set(glob.glob(savestate_directory + '/' + game + '.' + savestate_extensions + '.png'))
 
     savestates = set(savestates) - set(savestates_images)
 
 
+# read theme file
 def readTheme(name):
     global theme
 
     theme = configparser.ConfigParser()
-    theme.read('/home/pi/RetroPie/scripts/cloud-sync/themes/' + name + '/theme.ini')
+    theme.read(scriptBasePath + 'themes/' + name + '/theme.ini')
 
 
+# create a new notification using the theme and save it to /dev/shm/cloud-sync.png
 def createNotification(direction, provider, status):
     global theme
 
@@ -193,17 +208,18 @@ def createNotification(direction, provider, status):
     # Save States
     command.append('-pointsize ' + theme.get('savestate', 'fontsize') + ' -font ' + theme.get('savestate', 'font') + ' -style ' + theme.get('savestate', 'fontstyle') + ' -fill "' + theme.get('savestate', 'fontcolor') + '" -draw "text ' + theme.get('savestate', 'xy') + ' \'' + str(len(savestates)) + ' Savestate(s) and ' + str(len(savestates_images)) + ' Screenshot(s) found\'"')
 
-    command.append('/home/pi/RetroPie/scripts/cloud-sync/themes/' + settings.get('settings', 'theme') + '/direction_' + direction + '.png -geometry ' + theme.get('direction', 'geometry') + ' -composite')
-    command.append('/home/pi/RetroPie/scripts/cloud-sync/themes/' + settings.get('settings', 'theme') + '/provider_' + provider + '.png -geometry ' + theme.get('provider', 'geometry') + ' -composite')
-    command.append('/home/pi/RetroPie/scripts/cloud-sync/themes/' + settings.get('settings', 'theme') + '/status_' + status + '.png -geometry ' + theme.get('status', 'geometry') + ' -composite')
+    command.append(scriptBasePath + '/themes/' + settings.get('settings', 'theme') + '/direction_' + direction + '.png -geometry ' + theme.get('direction', 'geometry') + ' -composite')
+    command.append(scriptBasePath + '/themes/' + settings.get('settings', 'theme') + '/provider_' + provider + '.png -geometry ' + theme.get('provider', 'geometry') + ' -composite')
+    command.append(scriptBasePath + '/themes/' + settings.get('settings', 'theme') + '/status_' + status + '.png -geometry ' + theme.get('status', 'geometry') + ' -composite')
 
     # output file
-    command.append('/home/pi/RetroPie/scripts/cloud-sync/test.png')
+    command.append('/dev/shm/cloud-sync.png')
 
     print(' '.join(command))
     os.system(' '.join(command))
 
 
+# show a notification
 def showNotification(image, timeout):
     command = ['nohup',  'pngview', image]
     command.append('-t ' + timeout)
@@ -215,9 +231,8 @@ def showNotification(image, timeout):
     command.append('&')
     subprocess.Popen(command)
 
-    #subprocess.Popen(['nohup',  'pngview',  image,  '-t ' + timeout,  '-b 0',  '-l 10000',  '-x 16',  '-y 16', '&>/dev/null',  '&'])
 
-
+# print debug information
 def printDebug():
     print('----------')
     print('System: ' + system)
