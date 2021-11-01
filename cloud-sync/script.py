@@ -38,16 +38,6 @@ def __main__(argv):
     createNotification(scriptBasePath, settings, theme, direction, 'GoogleDrive', 'ok', system, game, localSavefiles, localSavestates, localSavestates_images)
     showNotification('/dev/shm/cloud-sync.png', settings.get('settings', 'notification_timeout'))
 
-    #getSaveFiles(system, rom)
-
-    # createNotification('down', 'GoogleDrive', 'sync')
-    # showNotification('/dev/shm/cloud-sync.png', settings.get('settings', 'notification_timeout'))
-    
-    # time.sleep(3)
-    
-    # createNotification('down', 'GoogleDrive', 'ok')
-    # showNotification('/dev/shm/cloud-sync.png', settings.get('settings', 'notification_timeout'))
-
 
 # initalize the script
 # returns configBasePath, scriptBasePath
