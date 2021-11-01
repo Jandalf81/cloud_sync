@@ -9,18 +9,6 @@ import logging
 
 
 def __main__(argv):
-    # global configBasePath
-    # global scriptBasePath
-
-    # global settings
-    # global theme
-
-    # global direction
-    # global system
-    # global emulator
-    # global rom
-    # global command
-
     # initialization
     configBasePath, scriptBasePath = __init__()
     direction, system, emulator, rom, command = getParameters(argv)
