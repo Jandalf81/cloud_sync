@@ -56,7 +56,7 @@ def __init__():
     logging.info('Script started')
 
     configBasePath = '/opt/retropie/configs/'
-    scriptBasePath = '/home/pi/RetroPie/scripts/cloud-sync/'
+    scriptBasePath = '/home/pi/RetroPie/cloud_sync/cloud-sync/'
 
     return configBasePath, scriptBasePath
 
