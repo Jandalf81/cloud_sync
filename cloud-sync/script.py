@@ -5,60 +5,89 @@ import os
 import glob
 import subprocess
 import time
+import logging
 
 
 def __main__(argv):
-    __init__()
+    # global configBasePath
+    # global scriptBasePath
 
-    getParameters(argv)
+    # global settings
+    # global theme
 
-    readSettings()
+    # global direction
+    # global system
+    # global emulator
+    # global rom
+    # global command
 
-    readTheme(settings.get('settings', 'theme'))
+    # initialization
+    configBasePath, scriptBasePath = __init__()
+    direction, system, emulator, rom, command = getParameters(argv)
+
+    # read settings and theme
+    settings = readSettings(scriptBasePath)
+    theme = readTheme(scriptBasePath, settings.get('settings', 'theme'))
     
+    # for DEBUG purposes
     if rom == '':
-        fillParametersForDebug()
+        direction, system, emulator, rom, command = fillParametersForDebug()
 
-    getSaveDirectories()
+    # get game name from ROM path
+    game = getGameFromROM(rom)
 
-    getSaveFiles(system, rom)
+    # get allowed save file extensions
+    savefile_extensions, savestate_extensions = getSaveExtensions(scriptBasePath, system)
 
-    printDebug()
+    # get LOCAL saves
+    localSavefile_directory, localSavestate_directory = getLocalSaveDirectories(configBasePath, system, rom)
+    localSavefiles, localSavestates, localSavestates_images = getLocalSaveFiles(localSavefile_directory, localSavestate_directory, game, savefile_extensions, savestate_extensions)
 
-    createNotification('up', 'GoogleDrive', 'sync')
-    showNotification('/dev/shm/cloud-sync.png', '10000')
-    
+    # create notification PNG
+    createNotification(scriptBasePath, settings, theme, direction, 'GoogleDrive', 'sync', system, game, localSavefiles, localSavestates, localSavestates_images)
+    showNotification('/dev/shm/cloud-sync.png', settings.get('settings', 'notification_timeout'))
     time.sleep(3)
+    createNotification(scriptBasePath, settings, theme, direction, 'GoogleDrive', 'ok', system, game, localSavefiles, localSavestates, localSavestates_images)
+    showNotification('/dev/shm/cloud-sync.png', settings.get('settings', 'notification_timeout'))
+
+    #getSaveFiles(system, rom)
+
+    # createNotification('down', 'GoogleDrive', 'sync')
+    # showNotification('/dev/shm/cloud-sync.png', settings.get('settings', 'notification_timeout'))
     
-    createNotification('up', 'GoogleDrive', 'ok')
-    showNotification('/dev/shm/cloud-sync.png', '10000')
+    # time.sleep(3)
+    
+    # createNotification('down', 'GoogleDrive', 'ok')
+    # showNotification('/dev/shm/cloud-sync.png', settings.get('settings', 'notification_timeout'))
 
 
 # initalize the script
+# returns configBasePath, scriptBasePath
 def __init__():
-    global configBasePath
-    global scriptBasePath
+    logging.basicConfig(filename='/dev/shm/cloud-sync.log', format='%(asctime)s: %(levelname)s: %(message)s', level=logging.DEBUG)
+    logging.info('Script started')
 
     configBasePath = '/opt/retropie/configs/'
     scriptBasePath = '/home/pi/RetroPie/scripts/cloud-sync/'
 
+    return configBasePath, scriptBasePath
+
 
 # extract given RetroArch parameters into global variables
+# returns direction, system, emulator, rom, command
 def getParameters(argv):
-    global system
-    global emulator
-    global rom
-    global command
+    logging.debug('getting parameters from call...')
 
+    direction = ''
     system = ''
     emulator = ''
     rom = ''
     command = ''
 
     try:
-        opts, args = getopt.getopt(argv, 'hs:e:r:c:', ['system=', 'emulator=', 'rom=', 'command='])
+        opts, args = getopt.getopt(argv, 'hd:s:e:r:c:', ['direction=', 'system=', 'emulator=', 'rom=', 'command='])
     except getopt.GetoptError:
-        print('FEHLER')
+        logging.error('wrong call to script')
         sys.exit(2)
 
     for opt, arg in opts:
@@ -67,40 +96,80 @@ def getParameters(argv):
             print('   cloud-sync.py -s <system> -e <emulator> -r <rom> -c <command>')
             print('   cloud-sync.py --system <system> --emulator <emulator> --rom <rom> --command <command>')
             sys.exit()
+        elif opt in ('-d', '--direction'):
+            direction = arg
+            logging.debug('got parameter --direction: {0}'.format(arg))
         elif opt in ('-s', '--system'):
             system = arg
+            logging.debug('got parameter --system: {0}'.format(arg))
         elif opt in ('-e', '--emulator'):
             emulator = arg
+            logging.debug('got parameter --emulator: {0}'.format(arg))
         elif opt in ('-r', '--rom'):
             rom = arg
+            logging.debug('got parameter --rom: {0}'.format(arg))
         elif opt in ('-c', '--command'):
             command = arg
+            logging.debug('got parameter --command: {0}'.format(arg))
+
+    return direction, system, emulator, rom, command
 
 
 # fill variables if no RetroArch parameters given for DEBUG purposes
 def fillParametersForDebug():
-    global system
-    global emulator
-    global rom
-    global command
-
+    direction = 'down'
     system = 'gb'
     emulator = 'lr-gambatte'
     rom = '/home/pi/RetroPie/roms/gb/Mystic Quest (Germany).zip'
     command = '/opt/retropie/emulators/retroarch/bin/retroarch -L /opt/retropie/libretrocores/lr-gambatte/gambatte_libretro.so --config /opt/retropie/configs/gb/retroarch.cfg "/home/pi/RetroPie/roms/gb/Mystic Quest (Germany).zip'
 
+    logging.debug('DEBUG parameter --direction: {0}'.format(direction))
+    logging.debug('DEBUG parameter --system: {0}'.format(system))
+    logging.debug('DEBUG parameter --emulator: {0}'.format(emulator))
+    logging.debug('DEBUG parameter --rom: {0}'.format(rom))
+    logging.debug('DEBUG parameter --command: {0}'.format(command))
+
+    return direction, system, emulator, rom, command
+
 
 # read the settings file
-def readSettings():
-    global settings
-    global scriptBasePath
+# returns settings
+def readSettings(scriptBasePath):
+    logging.debug('reading settings.ini...')
 
     settings = configparser.ConfigParser()
     settings.read(scriptBasePath + 'settings.ini')
 
+    return settings
+
+# get extensions to savefiles and savestates
+# returns savefile_extensions, savestate_extensions
+def getSaveExtensions(scriptBasePath, system):
+    logging.debug('getting save file extensions...')
+
+    config = configparser.ConfigParser()
+    config.read(scriptBasePath + 'systems.ini')
+
+    savefile_extensions = config.get(system, 'savefile')
+    savestate_extensions = config.get(system, 'savestate')
+
+    return savefile_extensions, savestate_extensions
+
+
+# get the game name from ROM path
+# returns game
+def getGameFromROM(rom):
+    game = os.path.basename(rom)
+    game = game.rsplit('.', 1)[0]
+
+    return game
+
 
 # read RetroArch configuration parameters from several files (first hit counts): Content, System, All
-def getParameterFromConfig(system, parameter):
+# returns retVal (containing parameter value from first hit)
+def getParameterFromConfig(configBasePath, system, parameter):
+    logging.debug('getting value of "{0}" from configuration file "{1}"...'.format(parameter, system))
+
     config = configparser.ConfigParser()
 
     # Content
@@ -117,9 +186,11 @@ def getParameterFromConfig(system, parameter):
         config.read_string(c)
         retVal = config.get('dummy', parameter)
 
+        logging.debug('found value "{0}" in system specific configuration'.format(retVal))
+
         return retVal
     except configparser.NoOptionError:
-        print('No system specific parameter found')
+        logging.debug('no value found in system specific configuration')
 
     # All
     try: 
@@ -129,68 +200,75 @@ def getParameterFromConfig(system, parameter):
         config.read_string(c)
         retVal = config.get('dummy', parameter)
 
+        logging.debug('found value "{0}" in default configuration'.format(retVal))
+
         return retVal
     except configparser.NoOptionError:
-        print('No default parameter found')
+        logging.debug('no value found in any configuration file')
 
     return 'n/a'
 
 
-# get the save directories from RetroArch configuration
-def getSaveDirectories():
-    global savefile_directory
-    global savestate_directory
+# get the LOCAL save directories from RetroArch configuration
+# returns localSavefile_directory, localSavestate_directory
+def getLocalSaveDirectories(configBasePath, system, rom):
+    logging.debug('getting Save directories...')
 
-    savefile_directory = getParameterFromConfig(system, 'savefile_directory')
-    if savefile_directory in ('n/a', '"default"'):
-        savefile_directory = os.path.dirname(rom)
+    localSavefile_directory = getParameterFromConfig(configBasePath, system, 'savefile_directory')
+    if localSavefile_directory in ('n/a', '"default"'):
+        localSavefile_directory = os.path.dirname(rom)
+        logging.debug('set value to "{0}"'.format(localSavefile_directory))
 
-    savestate_directory = getParameterFromConfig(system, 'savestate_directory')
-    if savestate_directory in ('n/a', '"default"'):
-        savestate_directory = os.path.dirname(rom)
+    localSavestate_directory = getParameterFromConfig(configBasePath, system, 'savestate_directory')
+    if localSavestate_directory in ('n/a', '"default"'):
+        localSavestate_directory = os.path.dirname(rom)
+        logging.debug('set value to "{0}"'.format(localSavestate_directory))
+
+    logging.info('Local Savefile directory set to {0}'.format(localSavefile_directory))
+    logging.info('Local Savestate directory set to {0}'.format(localSavestate_directory))
+
+    return localSavefile_directory, localSavestate_directory
 
 
-# get a list of battery saves, save states and screenshots
-def getSaveFiles(system, rom):
-    config = configparser.ConfigParser()
-    config.read(scriptBasePath + 'systems.ini')
+# get a list of LOCAL battery saves, save states and screenshots
+# returns return localSavefiles, localSavestates, localSavestates_images
+def getLocalSaveFiles(localSavefile_directory, localSavestate_directory, game, savefile_extensions, savestate_extensions):  
+    logging.debug('getting local save files...')
 
-    global savefile_extensions
-    global savestate_extensions
+    localSavefiles = set(glob.glob(localSavefile_directory + '/' + game + '.' + savefile_extensions))
 
-    savefile_extensions = config.get(system, 'savefile')
-    savestate_extensions = config.get(system, 'savestate')
+    localSavestates_images = set(glob.glob(localSavestate_directory + '/' + game + '.' + savestate_extensions + '.png'))
 
-    game = os.path.basename(rom)
-    game = game.rsplit('.', 1)[0]
-    
-    global savefiles 
-    savefiles = set(glob.glob(savefile_directory + '/' + game + '.' + savefile_extensions))
+    localSavestates = set(glob.glob(localSavestate_directory + '/' + game + '.' + savestate_extensions))
+    localSavestates = set(localSavestates) - set(localSavestates_images)
 
-    global savestates
-    savestates = set(glob.glob(savestate_directory + '/' + game + '.' + savestate_extensions))
+    logging.info('found local savefiles: {0}'.format(localSavefiles))
+    logging.info('found local savestates: {0}'.format(localSavestates))
+    logging.info('found local savestate images: {0}'.format(localSavestates_images))
 
-    global savestates_images
-    savestates_images = set(glob.glob(savestate_directory + '/' + game + '.' + savestate_extensions + '.png'))
+    return localSavefiles, localSavestates, localSavestates_images
 
-    savestates = set(savestates) - set(savestates_images)
+
+def getRemoteSaveFiles(system, game, savefile_extensions, savestate_extensions):
+    #print('rclone ls' + settings.get('settings', 'remote'))
+    pass
 
 
 # read theme file
-def readTheme(name):
-    global theme
+# returns theme
+def readTheme(scriptBasePath, name):
+    logging.debug('reading themes/{0}/theme.ini'.format(name))
 
     theme = configparser.ConfigParser()
     theme.read(scriptBasePath + 'themes/' + name + '/theme.ini')
 
+    return theme
+
 
 # create a new notification using the theme and save it to /dev/shm/cloud-sync.png
-def createNotification(direction, provider, status):
-    global theme
-
-    game = os.path.basename(rom)
-    game = game.rsplit('.', 1)[0]
-
+def createNotification(scriptBasePath, settings, theme, direction, provider, status, system, game, localSavefiles, localSavestates, localSavestates_images):
+    logging.debug('creating notification PNG...')
+    
     command = ['convert']
     # settings
     command.append('-gravity NorthWest')
@@ -201,12 +279,12 @@ def createNotification(direction, provider, status):
     # Game System and Name
     command.append('-pointsize ' + theme.get('game', 'fontsize') + ' -font ' + theme.get('game', 'font') + ' -style ' + theme.get('game', 'fontstyle') + ' -fill "' + theme.get('game', 'fontcolor') + '" -draw "text ' + theme.get('game', 'xy') + ' \'[' + system + '] ' + game + '\'"')
     # Battery Save
-    if len(savefiles) > 0:
+    if len(localSavefiles) > 0:
         command.append('-pointsize ' + theme.get('battery', 'fontsize') + ' -font ' + theme.get('battery', 'font') + ' -style ' + theme.get('battery', 'fontstyle') + ' -fill "' + theme.get('battery', 'fontcolor') + '" -draw "text ' + theme.get('battery', 'xy') + ' \'Battery Save found\'"')
     else:
         command.append('-pointsize ' + theme.get('battery', 'fontsize') + ' -font ' + theme.get('battery', 'font') + ' -style ' + theme.get('battery', 'fontstyle') + ' -fill "' + theme.get('battery', 'fontcolor') + '" -draw "text ' + theme.get('battery', 'xy') + ' \'No Battery Save found\'"')
     # Save States
-    command.append('-pointsize ' + theme.get('savestate', 'fontsize') + ' -font ' + theme.get('savestate', 'font') + ' -style ' + theme.get('savestate', 'fontstyle') + ' -fill "' + theme.get('savestate', 'fontcolor') + '" -draw "text ' + theme.get('savestate', 'xy') + ' \'' + str(len(savestates)) + ' Savestate(s) and ' + str(len(savestates_images)) + ' Screenshot(s) found\'"')
+    command.append('-pointsize ' + theme.get('savestate', 'fontsize') + ' -font ' + theme.get('savestate', 'font') + ' -style ' + theme.get('savestate', 'fontstyle') + ' -fill "' + theme.get('savestate', 'fontcolor') + '" -draw "text ' + theme.get('savestate', 'xy') + ' \'' + str(len(localSavestates)) + ' Savestate(s) and ' + str(len(localSavestates_images)) + ' Screenshot(s) found\'"')
 
     command.append(scriptBasePath + '/themes/' + settings.get('settings', 'theme') + '/direction_' + direction + '.png -geometry ' + theme.get('direction', 'geometry') + ' -composite')
     command.append(scriptBasePath + '/themes/' + settings.get('settings', 'theme') + '/provider_' + provider + '.png -geometry ' + theme.get('provider', 'geometry') + ' -composite')
@@ -215,12 +293,15 @@ def createNotification(direction, provider, status):
     # output file
     command.append('/dev/shm/cloud-sync.png')
 
-    print(' '.join(command))
+    logging.debug(' '.join(command))
+
     os.system(' '.join(command))
 
 
 # show a notification
 def showNotification(image, timeout):
+    logging.debug('show notification PNG...')
+    
     command = ['nohup',  'pngview', image]
     command.append('-t ' + timeout)
     command.append('-b 0')
@@ -230,25 +311,6 @@ def showNotification(image, timeout):
     command.append('&>/dev/null')
     command.append('&')
     subprocess.Popen(command)
-
-
-# print debug information
-def printDebug():
-    print('----------')
-    print('System: ' + system)
-    print('Emulator: ' + emulator)
-    print('ROM: ' + rom)
-    print('Command: ' + command)
-    print('Savefile directory: ' + savefile_directory)
-    print('Savefile extensions: ' + savefile_extensions)
-    print('Savefiles:')
-    print(savefiles)
-    print('Savestate directory: ' + savestate_directory)
-    print('Savestate extensions: ' + savestate_extensions)
-    print('Savestates:')
-    print(savestates)
-    print('Savestate images:')
-    print(savestates_images)
 
 
 if __name__ == '__main__':
