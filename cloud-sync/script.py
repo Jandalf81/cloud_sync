@@ -27,20 +27,36 @@ def __main__(argv):
     # get allowed save file extensions
     savefile_extensions, savestate_extensions = getSaveExtensions(scriptBasePath, system)
 
-    # get LOCAL saves
+    # get local save directories
     localSavefile_directory, localSavestate_directory = getLocalSaveDirectories(configBasePath, system, rom)
-    localSavefiles, localSavestates, localSavestates_images = getLocalSaveFiles(localSavefile_directory, localSavestate_directory, game, savefile_extensions, savestate_extensions)
 
-
+    # get type of rClone remote
     rCloneRemoteType = getRcloneRemoteType(settings.get('settings', 'remote'))
 
 
-    # create notification PNG
-    createNotification(scriptBasePath, settings, theme, direction, rCloneRemoteType, 'sync', system, game, localSavefiles, localSavestates, localSavestates_images)
-    showNotification('/dev/shm/cloud-sync.png', settings.get('settings', 'notification_timeout'))
-    time.sleep(3)
-    createNotification(scriptBasePath, settings, theme, direction, rCloneRemoteType, 'ok', system, game, localSavefiles, localSavestates, localSavestates_images)
-    showNotification('/dev/shm/cloud-sync.png', settings.get('settings', 'notification_timeout'))
+    if (direction == 'down'):
+        # TODO
+        pass
+
+
+    if (direction == 'up'):
+        # get LOCAL saves
+        localSavefiles, localSavestates, localSavestates_images = getLocalSaveFiles(localSavefile_directory, localSavestate_directory, game, savefile_extensions, savestate_extensions)
+
+        # create notification PNG
+        createNotification(scriptBasePath, settings, theme, direction, rCloneRemoteType, 'sync', system, game, localSavefiles, localSavestates, localSavestates_images)
+        showNotification('/dev/shm/cloud-sync.png', settings.get('settings', 'notification_timeout'))
+
+        sp = subprocess.run(['rclone', 'copy', localSavefile_directory, settings.get('settings', 'remote') + '/' + system, '--include', game + '.' + savefile_extensions, '--update'], capture_output=True)
+        stdout = sp.stdout
+        stderr = sp.stderr
+
+        sp = subprocess.run(['rclone', 'copy', localSavestate_directory, settings.get('settings', 'remote') + '/' + system, '--include', game + '.' + savestate_extensions, '--update'], capture_output=True)
+        stdout = sp.stdout
+        stderr = sp.stderr
+        
+        createNotification(scriptBasePath, settings, theme, direction, rCloneRemoteType, 'ok', system, game, localSavefiles, localSavestates, localSavestates_images)
+        showNotification('/dev/shm/cloud-sync.png', settings.get('settings', 'notification_timeout'))
 
 
 # initalize the script
@@ -99,7 +115,7 @@ def getParameters(argv):
 
 # fill variables if no RetroArch parameters given for DEBUG purposes
 def fillParametersForDebug():
-    direction = 'down'
+    direction = 'up'
     system = 'gb'
     emulator = 'lr-gambatte'
     rom = '/home/pi/RetroPie/roms/gb/Mystic Quest (Germany).zip'
