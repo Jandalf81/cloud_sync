@@ -31,11 +31,15 @@ def __main__(argv):
     localSavefile_directory, localSavestate_directory = getLocalSaveDirectories(configBasePath, system, rom)
     localSavefiles, localSavestates, localSavestates_images = getLocalSaveFiles(localSavefile_directory, localSavestate_directory, game, savefile_extensions, savestate_extensions)
 
+
+    rCloneRemoteType = getRcloneRemoteType(settings.get('settings', 'remote'))
+
+
     # create notification PNG
-    createNotification(scriptBasePath, settings, theme, direction, 'GoogleDrive', 'sync', system, game, localSavefiles, localSavestates, localSavestates_images)
+    createNotification(scriptBasePath, settings, theme, direction, rCloneRemoteType, 'sync', system, game, localSavefiles, localSavestates, localSavestates_images)
     showNotification('/dev/shm/cloud-sync.png', settings.get('settings', 'notification_timeout'))
     time.sleep(3)
-    createNotification(scriptBasePath, settings, theme, direction, 'GoogleDrive', 'ok', system, game, localSavefiles, localSavestates, localSavestates_images)
+    createNotification(scriptBasePath, settings, theme, direction, rCloneRemoteType, 'ok', system, game, localSavefiles, localSavestates, localSavestates_images)
     showNotification('/dev/shm/cloud-sync.png', settings.get('settings', 'notification_timeout'))
 
 
@@ -46,7 +50,7 @@ def __init__():
     logging.info('Script started')
 
     configBasePath = '/opt/retropie/configs/'
-    scriptBasePath = '/home/pi/RetroPie/cloud_sync/cloud-sync/'
+    scriptBasePath = os.path.dirname(sys.argv[0]) + '/'
 
     return configBasePath, scriptBasePath
 
@@ -241,6 +245,32 @@ def readTheme(scriptBasePath, name):
     theme.read(scriptBasePath + 'themes/' + name + '/theme.ini')
 
     return theme
+
+
+def getRcloneRemoteType(remote):
+    logging.debug('Getting type of RCLONE remote path {0}'.format(remote))
+
+    try:
+        stdoutBytes = subprocess.run(['rclone',  'config',  'file'], capture_output=True).stdout
+        stdout = stdoutBytes.decode('utf-8')
+        configFile = stdout.replace('Configuration file is stored at:\n', '')
+        configFile = configFile.replace('\n', '')
+    
+        logging.debug('RCLONE configuration at {0}'.format(configFile))
+
+        remoteName = remote[0:remote.index(':')]
+
+        rCloneConfig = configparser.ConfigParser()
+        rCloneConfig.read(configFile)
+        rCloneRemoteType = rCloneConfig.get(remoteName, 'type')
+
+        logging.debug('Got type of "{0}"'.format(rCloneRemoteType))
+
+    except:
+        logging.error('Error while getting type of RCLONE remote type')
+        sys.exit(2)
+    
+    return rCloneRemoteType
 
 
 # create a new notification using the theme and save it to /dev/shm/cloud-sync.png
